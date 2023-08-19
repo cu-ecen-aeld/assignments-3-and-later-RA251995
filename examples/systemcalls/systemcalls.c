@@ -139,11 +139,10 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
 	command[count] = NULL;
 	// this line is to avoid a compile warning before your implementation is complete
 	// and may be removed
-	command[count] = command[count];
+	//command[count] = command[count];
 
 
 	/*
-	 * TODO
 	 *   Call execv, but first using https://stackoverflow.com/a/13784315/1446624 as a refernce,
 	 *   redirect standard out to a file specified by outputfile.
 	 *   The rest of the behaviour is same as do_exec()
