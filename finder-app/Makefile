@@ -1,9 +1,9 @@
-CC=$(CROSS_COMPILE)gcc 
-CFLAGS=-g -Wall
+CC ?= $(CROSS_COMPILE)gcc 
+CCFLAGS ?= -Wall
 
 all:
-	$(CC) $(CFLAGS) -c -o writer.o writer.c
-	$(CC) $(CFLAGS) -I/ writer.o -o writer
+	$(CC) $(CCFLAGS) -c -o writer.o writer.c
+	$(CC) $(LDFLAGS) writer.o -o writer
 
 clean:
 	rm -f *.o writer *.elf *.map
