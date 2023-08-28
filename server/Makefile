@@ -1,9 +1,10 @@
-CC ?= $(CROSS_COMPILE)gcc 
-CCFLAGS += -Wall -Werror
+CC := $(CROSS_COMPILE)gcc 
+CCFLAGS += -Wall -Werror -g
+LDFLAGS += -pthread -lrt
 
 all:
 	$(CC) $(CCFLAGS) -c -o aesdsocket.o aesdsocket.c
-	$(CC) $(LDFLAGS) aesdsocket.o -o aesdsocket
+	$(CC) aesdsocket.o -o aesdsocket $(LDFLAGS)
 
 clean:
 	rm -f *.o aesdsocket
