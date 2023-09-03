@@ -17,9 +17,15 @@
 #include <pthread.h>
 #include "queue.h"
 
-#define PORT "9000"
-#define MAXBUFLEN (256 * 1024U)
-#define TMPFILE "/var/tmp/aesdsocketdata"
+#define USE_AESD_CHAR_DEVICE	(1)
+
+#define PORT 					"9000"
+#define MAXBUFLEN 				(256 * 1024U)
+#if USE_AESD_CHAR_DEVICE
+#define TMPFILE 				"/dev/aesdchar"
+#else
+#define TMPFILE 				"/var/tmp/aesdsocketdata"
+#endif
 
 typedef struct thread_args_s thread_args_t;
 typedef struct slist_data_s slist_data_t;
@@ -47,6 +53,7 @@ static void sig_handler(int signum)
 	caughtsig = true;
 }
 
+#if !USE_AESD_CHAR_DEVICE
 static void time_thread(union sigval sv)
 {
 	char outstr[256];
@@ -72,6 +79,7 @@ static void time_thread(union sigval sv)
 		perror("aesdsocket: pthread_mutex_unlock");
 	}
 }
+#endif
 
 static void *serve_thread(void *arg)
 {
@@ -172,9 +180,11 @@ int main(int argc, char *argv[])
 	int yes = 1;
 	slist_data_t *datap = NULL;
 	slist_data_t *tdatap = NULL;
+#if !USE_AESD_CHAR_DEVICE
 	timer_t timer;
 	struct sigevent sev;
 	struct itimerspec its;
+#endif
 
 	while ((opt = getopt(argc, argv, "d")) != -1)
 	{
@@ -262,6 +272,7 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
+#if !USE_AESD_CHAR_DEVICE
 	memset(&sev, 0, sizeof(sev));
 	sev.sigev_notify = SIGEV_THREAD;
 	sev.sigev_notify_function = &time_thread;
@@ -279,6 +290,7 @@ int main(int argc, char *argv[])
 		perror("aesdsocket: timer_settime");
 		return -1;
 	}
+#endif
 
 	SLIST_HEAD(slisthead, slist_data_s)
 	head;
@@ -336,11 +348,13 @@ int main(int argc, char *argv[])
 		SLIST_REMOVE_HEAD(&head, entries);
 		free(datap);
 	}
+#if !USE_AESD_CHAR_DEVICE
 	if (timer_delete(timer) != 0)
 	{
 		perror("aesdsocket: timer_delete");
 		rv = -1;
 	}
+#endif
 	if (fclose(fp) == EOF)
 	{
 		perror("aesdsocket: fclose");
@@ -361,6 +375,7 @@ int main(int argc, char *argv[])
 		perror("aesdsocket: close");
 		rv = -1;
 	}
+#if !USE_AESD_CHAR_DEVICE
 	if (access(TMPFILE, F_OK) == 0)
 	{
 		if (remove(TMPFILE) == -1)
@@ -369,5 +384,6 @@ int main(int argc, char *argv[])
 			rv = -1;
 		}
 	}
+#endif
 	return rv;
 }
