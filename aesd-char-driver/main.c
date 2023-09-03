@@ -93,6 +93,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     struct command_buffer *s_cmd_p = &(s_dev_p->cmd);
     struct aesd_buffer_entry s_entry;
     char *buffptr;
+    const char *u8_buffptr_rtn_p;
 
     PDEBUG("write %zu bytes with offset %lld", count, *f_pos);
     /**
@@ -120,9 +121,15 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         goto out;
     }
     memcpy(buffptr, s_cmd_p->buf, s_cmd_p->size);
+    PDEBUG("aesd_write: write cmd @ %p", buffptr);
     s_entry.buffptr = buffptr;
     s_entry.size = s_cmd_p->size;
-    aesd_circular_buffer_add_entry(&(s_dev_p->circbuf), &s_entry);
+    u8_buffptr_rtn_p = aesd_circular_buffer_add_entry(&(s_dev_p->circbuf), &s_entry);
+    if (u8_buffptr_rtn_p)
+    {
+        PDEBUG("aesd_write: release cmd @ %p", u8_buffptr_rtn_p);
+        kfree(u8_buffptr_rtn_p);
+    }
     PDEBUG("aesd_write: circbuf write %zu %s", s_entry.size, s_entry.buffptr);
     s_cmd_p->size = 0;
 
