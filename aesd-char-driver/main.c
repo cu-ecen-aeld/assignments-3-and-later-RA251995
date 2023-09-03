@@ -88,38 +88,49 @@ out:
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                    loff_t *f_pos)
 {
-    ssize_t retval = -ENOMEM;
-    struct aesd_dev *dev = filp->private_data;
-    struct aesd_buffer_entry entry;
-    char *cmd;
+    ssize_t ss_retval = -EFAULT;
+    struct aesd_dev *s_dev_p = filp->private_data;
+    struct command_buffer *s_cmd_p = &(s_dev_p->cmd);
+    struct aesd_buffer_entry s_entry;
+    char *buffptr;
 
     PDEBUG("write %zu bytes with offset %lld", count, *f_pos);
     /**
      * TODO: handle write
      */
-    cmd = kmalloc(sizeof(char) * count, GFP_KERNEL);
-    if (!cmd)
+    if(copy_from_user(&(s_cmd_p->buf[s_cmd_p->size]), buf, count))
     {
-        retval = -ENOMEM;
+        ss_retval = -EFAULT;
         goto out;
     }
-    PDEBUG("aesd_write: kmalloc cmd @ %p", cmd);
-    if (copy_from_user(cmd, buf, count))
+    s_cmd_p->size += count;
+    PDEBUG("aesd_write: cmd write %zu %s", s_cmd_p->size, s_cmd_p->buf);
+
+    if (s_cmd_p->buf[s_cmd_p->size - 1] != '\n')
     {
-        retval = -EFAULT;
-        goto fail;
+        ss_retval = count;
+        goto out;
     }
-    entry.buffptr = cmd;
-    entry.size = count;
-    aesd_circular_buffer_add_entry(&dev->circbuf, &entry);
-    retval = entry.size;
-    PDEBUG("aesd_write: %s", entry.buffptr);
+
+    /* Write to circular buffer */
+    buffptr = kmalloc(s_cmd_p->size, GFP_KERNEL);
+    if (!buffptr)
+    {
+        ss_retval = -ENOMEM;
+        goto out;
+    }
+    memcpy(buffptr, s_cmd_p->buf, s_cmd_p->size);
+    s_entry.buffptr = buffptr;
+    s_entry.size = s_cmd_p->size;
+    aesd_circular_buffer_add_entry(&(s_dev_p->circbuf), &s_entry);
+    PDEBUG("aesd_write: circbuf write %zu %s", s_entry.size, s_entry.buffptr);
+    s_cmd_p->size = 0;
+
+    ss_retval = count;
     goto out;
 
-fail:
-    kfree(cmd);
 out:
-    return retval;
+    return ss_retval;
 }
 
 struct file_operations aesd_fops = {
@@ -162,14 +173,15 @@ int aesd_init_module(void)
     /**
      * TODO: initialize the AESD specific portion of the device
      */
-    aesd_circular_buffer_init(&aesd_device.circbuf);
+    aesd_circular_buffer_init(&(aesd_device.circbuf));
+    aesd_device.cmd.size = 0;
 
     result = aesd_setup_cdev(&aesd_device);
-
     if (result)
     {
         unregister_chrdev_region(dev, 1);
     }
+
     return result;
 }
 
