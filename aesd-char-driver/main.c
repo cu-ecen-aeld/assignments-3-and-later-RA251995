@@ -55,34 +55,39 @@ int aesd_release(struct inode *inode, struct file *filp)
 ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                   loff_t *f_pos)
 {
-    ssize_t retval = 0;
-    struct aesd_dev *dev = filp->private_data;
-    struct aesd_buffer_entry *entry;
-    size_t entry_offset;
-    size_t rcnt;
+    ssize_t ss_retval = 0;
+    struct aesd_dev *s_dev_p = filp->private_data;
+    struct aesd_buffer_entry *s_entry_p;
+    size_t us_entry_offset;
+    size_t us_rcnt;
 
     PDEBUG("read %zu bytes with offset %lld", count, *f_pos);
     /**
      * TODO: handle read
      */
-    entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->circbuf, *f_pos, &entry_offset);
-    if (!entry)
+    if (mutex_lock_interruptible(&(s_dev_p->lock)))
     {
-        retval = 0;
+        return -ERESTARTSYS;
+    }
+    s_entry_p = aesd_circular_buffer_find_entry_offset_for_fpos(&s_dev_p->circbuf, *f_pos, &us_entry_offset);
+    if (!s_entry_p)
+    {
+        ss_retval = 0;
         goto out;
     }
-    PDEBUG("aesd_read: %s", entry->buffptr);
-    rcnt = entry->size - entry_offset;
-    if (copy_to_user(buf, &entry->buffptr[entry_offset], rcnt))
+    PDEBUG("aesd_read: %s", s_entry_p->buffptr);
+    us_rcnt = s_entry_p->size - us_entry_offset;
+    if (copy_to_user(buf, &s_entry_p->buffptr[us_entry_offset], us_rcnt))
     {
-        retval = -EFAULT;
+        ss_retval = -EFAULT;
         goto out;
     }
-    *f_pos += rcnt;
-    retval = rcnt;
+    *f_pos += us_rcnt;
+    ss_retval = us_rcnt;
 
 out:
-    return retval;
+    mutex_unlock(&(s_dev_p->lock));
+    return ss_retval;
 }
 
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
@@ -99,7 +104,12 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     /**
      * TODO: handle write
      */
-    if(copy_from_user(&(s_cmd_p->buf[s_cmd_p->size]), buf, count))
+    if (mutex_lock_interruptible(&(s_dev_p->lock)))
+    {
+        return -ERESTARTSYS;
+    }
+
+    if (copy_from_user(&(s_cmd_p->buf[s_cmd_p->size]), buf, count))
     {
         ss_retval = -EFAULT;
         goto out;
@@ -134,9 +144,9 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     s_cmd_p->size = 0;
 
     ss_retval = count;
-    goto out;
 
 out:
+    mutex_unlock(&(s_dev_p->lock));
     return ss_retval;
 }
 
@@ -182,6 +192,7 @@ int aesd_init_module(void)
      */
     aesd_circular_buffer_init(&(aesd_device.circbuf));
     aesd_device.cmd.size = 0;
+    mutex_init(&aesd_device.lock);
 
     result = aesd_setup_cdev(&aesd_device);
     if (result)

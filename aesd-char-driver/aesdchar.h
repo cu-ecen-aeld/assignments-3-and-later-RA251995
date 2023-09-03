@@ -40,6 +40,7 @@ struct aesd_dev
      */
     struct aesd_circular_buffer circbuf;
     struct command_buffer cmd;
+    struct mutex lock;
 
     struct cdev cdev;     /* Char device structure      */
 };
