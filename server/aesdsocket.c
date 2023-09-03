@@ -17,14 +17,14 @@
 #include <pthread.h>
 #include "queue.h"
 
-#define USE_AESD_CHAR_DEVICE	(1)
+#define USE_AESD_CHAR_DEVICE (1)
 
-#define PORT 					"9000"
-#define MAXBUFLEN 				(256 * 1024U)
+#define PORT "9000"
+#define MAXBUFLEN (256 * 1024U)
 #if USE_AESD_CHAR_DEVICE
-#define TMPFILE 				"/dev/aesdchar"
+#define TMPFILE "/dev/aesdchar"
 #else
-#define TMPFILE 				"/var/tmp/aesdsocketdata"
+#define TMPFILE "/var/tmp/aesdsocketdata"
 #endif
 
 typedef struct thread_args_s thread_args_t;
@@ -46,7 +46,6 @@ struct slist_data_s
 };
 bool caughtsig = false;
 pthread_mutex_t flock;
-FILE *fp;
 
 static void sig_handler(int signum)
 {
@@ -59,6 +58,7 @@ static void time_thread(union sigval sv)
 	char outstr[256];
 	time_t t;
 	struct tm *tmp;
+	FILE *fp;
 
 	t = time(NULL);
 	if ((tmp = localtime(&t)) == NULL)
@@ -73,7 +73,18 @@ static void time_thread(union sigval sv)
 	{
 		perror("aesdsocket: pthread_mutex_lock");
 	}
-	fprintf(fp, "timestamp:%s\n", outstr);
+	if ((fp = fopen(TMPFILE, "a")) == NULL)
+	{
+		perror("aesdsocket: fopen");
+	}
+	else
+	{
+		fprintf(fp, "timestamp:%s\n", outstr);
+		if (fclose(fp) == EOF)
+		{
+			perror("aesdsocket: fclose");
+		}
+	}
 	if (pthread_mutex_unlock(&flock) != 0)
 	{
 		perror("aesdsocket: pthread_mutex_unlock");
@@ -86,9 +97,8 @@ static void *serve_thread(void *arg)
 	char ipstr[INET_ADDRSTRLEN];
 	char *recvbuf, *sendbuf;
 	int rv;
-	//int sockerr;
 	size_t sendbuflen;
-	//socklen_t sockerrlen;
+	FILE *fp;
 	thread_args_t *targs = arg;
 
 	targs->rv = 0;
@@ -122,17 +132,42 @@ static void *serve_thread(void *arg)
 			{
 				perror("aesdsocket: pthread_mutex_lock");
 			}
-			if (fprintf(fp, "%s", recvbuf) < 0)
+
+			if ((fp = fopen(TMPFILE, "a")) == NULL)
 			{
-				fprintf(stderr, "aesdsock: fprintf");
+				perror("aesdsocket: fopen");
 			}
-			rewind(fp);
-			while((sendbuflen = fread(sendbuf, sizeof(char), MAXBUFLEN, fp)) > 0) {
-				if (send(targs->listenfd, sendbuf, sendbuflen, 0) == -1)
+			else
+			{
+				if (fprintf(fp, "%s", recvbuf) < 0)
 				{
-					perror("aesdsock: send");
+					fprintf(stderr, "aesdsock: fprintf");
+				}
+				if (fclose(fp) == EOF)
+				{
+					perror("aesdsocket: fclose");
 				}
 			}
+
+			if ((fp = fopen(TMPFILE, "r")) == NULL)
+			{
+				perror("aesdsocket: fopen");
+			}
+			else
+			{
+				while ((sendbuflen = fread(sendbuf, sizeof(char), MAXBUFLEN, fp)) > 0)
+				{
+					if (send(targs->listenfd, sendbuf, sendbuflen, 0) == -1)
+					{
+						perror("aesdsock: send");
+					}
+				}
+				if (fclose(fp) == EOF)
+				{
+					perror("aesdsocket: fclose");
+				}
+			}
+
 			if (pthread_mutex_unlock(&flock) != 0)
 			{
 				perror("aesdsocket: pthread_mutex_unlock");
@@ -266,12 +301,6 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	if ((fp = fopen(TMPFILE, "w+")) == NULL)
-	{
-		perror("aesdsocket: fopen");
-		return -1;
-	}
-
 #if !USE_AESD_CHAR_DEVICE
 	memset(&sev, 0, sizeof(sev));
 	sev.sigev_notify = SIGEV_THREAD;
@@ -355,11 +384,6 @@ int main(int argc, char *argv[])
 		rv = -1;
 	}
 #endif
-	if (fclose(fp) == EOF)
-	{
-		perror("aesdsocket: fclose");
-		rv = -1;
-	}
 	if (pthread_mutex_destroy(&flock) != 0)
 	{
 		perror("aesdsocket: pthread_mutex_destroy");
