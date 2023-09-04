@@ -206,6 +206,8 @@ static long aesd_adjust_file_offset(struct file *filp, unsigned int write_cmd, u
 
     mutex_unlock(&(s_dev_p->lock));
 
+    PDEBUG("aesd_adjust_file_offset: fpos: %lld", filp->f_pos);
+
     return retval;
 }
 
@@ -225,6 +227,7 @@ long aesd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
         }
         else
         {
+            PDEBUG("aesd_ioctl: AESDCHAR_IOCSEEKTO:%d,%d", seekto.write_cmd, seekto.write_cmd_offset);
             retval = aesd_adjust_file_offset(filp, seekto.write_cmd, seekto.write_cmd_offset);
         }
         break;

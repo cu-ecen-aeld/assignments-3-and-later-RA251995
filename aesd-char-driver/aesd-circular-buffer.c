@@ -33,10 +33,16 @@ long aesd_circular_buffer_get_fpos(struct aesd_circular_buffer *buffer, unsigned
         return -1;
     }
 
-    for (index = buffer->out_offs; index <= cmd_index_fpos; index++)
+    if(cmd_offset >= buffer->entry[cmd_index_fpos].size)
+    {
+        return -1;
+    }
+
+    for (index = buffer->out_offs; index < cmd_index_fpos; index++)
     {
         fpos += buffer->entry[index].size;
     }
+    fpos += cmd_offset;
 
     return fpos;
 }

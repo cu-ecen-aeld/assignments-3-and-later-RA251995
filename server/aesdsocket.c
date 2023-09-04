@@ -16,6 +16,7 @@
 #include <sys/resource.h>
 #include <pthread.h>
 #include "queue.h"
+#include "../aesd-char-driver/aesd_ioctl.h"
 
 #define USE_AESD_CHAR_DEVICE (1)
 
@@ -92,6 +93,55 @@ static void time_thread(union sigval sv)
 }
 #endif
 
+int parse_cmd(char *buf, size_t buflen, struct aesd_seekto *seekto)
+{
+	char *cmd, *arg1, *arg2;
+
+	cmd = malloc(buflen);
+	if (!cmd)
+	{
+		return -ENOMEM;
+	}
+	memcpy(cmd, buf, buflen);
+
+	cmd[strcspn(cmd, "\n")] = '\0';
+	cmd = strtok(cmd, ":");
+	if (!cmd)
+	{
+		free(cmd);
+		return -EINVAL;
+	}
+	if (strcmp(cmd, "AESDCHAR_IOCSEEKTO"))
+	{
+		free(cmd);
+		return -EINVAL;
+	}
+
+	arg1 = strtok(NULL, ",");
+	arg2 = strtok(NULL, "");
+	if (arg1 == NULL || arg2 == NULL)
+	{
+		free(cmd);
+		return -EINVAL;
+	}
+
+	seekto->write_cmd = strtoul(arg1, NULL, 10);
+	if (seekto->write_cmd == 0 && errno == EINVAL)
+	{
+		free(cmd);
+		return -EINVAL;
+	}
+	seekto->write_cmd_offset = strtoul(arg2, NULL, 10);
+	if (seekto->write_cmd_offset == 0 && errno == EINVAL)
+	{
+		free(cmd);
+		return -EINVAL;
+	}
+
+	free(cmd);
+	return 0;
+}
+
 static void *serve_thread(void *arg)
 {
 	char ipstr[INET_ADDRSTRLEN];
@@ -99,6 +149,7 @@ static void *serve_thread(void *arg)
 	int rv;
 	size_t sendbuflen;
 	FILE *fp;
+	struct aesd_seekto seekto;
 	thread_args_t *targs = arg;
 
 	targs->rv = 0;
@@ -128,43 +179,74 @@ static void *serve_thread(void *arg)
 		if (rv > 0)
 		{
 			recvbuf[rv] = '\0';
+
 			if (pthread_mutex_lock(&flock) != 0)
 			{
 				perror("aesdsocket: pthread_mutex_lock");
 			}
 
-			if ((fp = fopen(TMPFILE, "a")) == NULL)
+			if (parse_cmd(recvbuf, rv, &seekto) == 0)
 			{
-				perror("aesdsocket: fopen");
-			}
-			else
-			{
-				if (fprintf(fp, "%s", recvbuf) < 0)
+				if ((fp = fopen(TMPFILE, "r")) == NULL)
 				{
-					fprintf(stderr, "aesdsock: fprintf");
+					perror("aesdsocket: fopen");
 				}
-				if (fclose(fp) == EOF)
+				else
 				{
-					perror("aesdsocket: fclose");
-				}
-			}
-
-			if ((fp = fopen(TMPFILE, "r")) == NULL)
-			{
-				perror("aesdsocket: fopen");
-			}
-			else
-			{
-				while ((sendbuflen = fread(sendbuf, sizeof(char), MAXBUFLEN, fp)) > 0)
-				{
-					if (send(targs->listenfd, sendbuf, sendbuflen, 0) == -1)
+					if (ioctl(fileno(fp), AESDCHAR_IOCSEEKTO, &seekto) == 0)
 					{
-						perror("aesdsock: send");
+						while ((sendbuflen = fread(sendbuf, sizeof(char), MAXBUFLEN, fp)) > 0)
+						{
+							if (send(targs->listenfd, sendbuf, sendbuflen, 0) == -1)
+							{
+								perror("aesdsock: send");
+							}
+						}
+						if (fclose(fp) == EOF)
+						{
+							perror("aesdsocket: fclose");
+						}
+					}
+					else
+					{
+						perror("aesdsocket: ioctl");
 					}
 				}
-				if (fclose(fp) == EOF)
+			}
+			else
+			{
+				if ((fp = fopen(TMPFILE, "a")) == NULL)
 				{
-					perror("aesdsocket: fclose");
+					perror("aesdsocket: fopen");
+				}
+				else
+				{
+					if (fprintf(fp, "%s", recvbuf) < 0)
+					{
+						fprintf(stderr, "aesdsocket: fprintf");
+					}
+					if (fclose(fp) == EOF)
+					{
+						perror("aesdsocket: fclose");
+					}
+				}
+				if ((fp = fopen(TMPFILE, "r")) == NULL)
+				{
+					perror("aesdsocket: fopen");
+				}
+				else
+				{
+					while ((sendbuflen = fread(sendbuf, sizeof(char), MAXBUFLEN, fp)) > 0)
+					{
+						if (send(targs->listenfd, sendbuf, sendbuflen, 0) == -1)
+						{
+							perror("aesdsock: send");
+						}
+					}
+					if (fclose(fp) == EOF)
+					{
+						perror("aesdsocket: fclose");
+					}
 				}
 			}
 
