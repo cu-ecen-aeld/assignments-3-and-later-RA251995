@@ -16,6 +16,55 @@
 
 #include "aesd-circular-buffer.h"
 
+long aesd_circular_buffer_get_fpos(struct aesd_circular_buffer *buffer, unsigned int cmd_index, unsigned int cmd_offset)
+{
+    uint8_t index;
+    uint8_t cmd_index_fpos;
+    long fpos = 0;
+
+    if (cmd_index >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
+    {
+        return -1;
+    }
+
+    cmd_index_fpos = (buffer->out_offs + cmd_index) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+    if (!(buffer->full) && (cmd_index_fpos >= buffer->in_offs))
+    {
+        return -1;
+    }
+
+    for (index = buffer->out_offs; index <= cmd_index_fpos; index++)
+    {
+        fpos += buffer->entry[index].size;
+    }
+
+    return fpos;
+}
+
+/**
+ * @param buffer the buffer of which size is to be return
+ * @return size of the @param buffer
+ */
+size_t aesd_circular_buffer_get_size(struct aesd_circular_buffer *buffer)
+{
+    uint8_t index = buffer->out_offs;
+    size_t size = 0;
+
+    if (buffer->full)
+    {
+        size += buffer->entry[index].size;
+        index = (index + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+    }
+
+    while (index != buffer->in_offs)
+    {
+        size += buffer->entry[index].size;
+        index = (index + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+    }
+
+    return size;
+}
+
 /**
  * @param buffer the buffer to search for corresponding offset.  Any necessary locking must be performed by caller.
  * @param char_offset the position to search for in the buffer list, describing the zero referenced
@@ -47,7 +96,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
         entry = &buffer->entry[cur_buf_idx];
         cur_buf_idx++;
         cur_buf_idx %= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
-        if(char_offset < entry->size)
+        if (char_offset < entry->size)
         {
             *entry_offset_byte_rtn = char_offset;
             return entry;
@@ -57,7 +106,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
             char_offset -= entry->size;
         }
     } while (cur_buf_idx != buffer->in_offs);
-    
+
     return NULL;
 }
 
